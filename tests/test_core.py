@@ -286,7 +286,13 @@ def test_frozen_paths() -> None:
           C.ensure_user_files() == [])
 
     # ---------------- 模拟打包模式 ----------------
-    exe_dir = Path(tempfile.mkdtemp(prefix="frozen_exe_"))
+    # ⚠️ 必须 `.resolve()`：`_app_root()` 返回的是 `Path(sys.executable).resolve().parent`，
+    #    已经规范化过。而 `tempfile.mkdtemp()` 返回的是**原始**路径 ——
+    #    在 GitHub runner 上 `%TEMP%` 是 8.3 短路径（`RUNNER~1`），`.resolve()`
+    #    会展开成长路径，两边直接比就会不等（CI 上挂了 3 项，本地看不出来）。
+    exe_dir = Path(tempfile.mkdtemp(prefix="frozen_exe_")).resolve()
+    # `_bundle_root()` 返回的是**未 resolve** 的 `Path(sys._MEIPASS)`，
+    # 所以 mei_dir 保持原样，不要跟着 resolve。
     mei_dir = Path(tempfile.mkdtemp(prefix="frozen_mei_"))
     fallback_root: Path | None = None
     (mei_dir / "config.yaml").write_text(
@@ -313,7 +319,8 @@ def test_frozen_paths() -> None:
 
         check("打包模式 is_frozen() 为 True", C.is_frozen() is True)
         check("打包模式 PROJECT_ROOT 指向 exe 所在目录",
-              C.PROJECT_ROOT == exe_dir, f"实际 {C.PROJECT_ROOT}")
+              C.PROJECT_ROOT == exe_dir,
+              f"PROJECT_ROOT={C.PROJECT_ROOT!r} exe_dir={exe_dir!r}")
         check("根目录**不是**临时解包目录（否则 .env 会丢）",
               C.PROJECT_ROOT != mei_dir)
         check("内置资源目录才是 _MEIPASS",
@@ -327,7 +334,8 @@ def test_frozen_paths() -> None:
         check("首启把内置 terms.yaml 铺到 exe 旁边（热词表外部引用）",
               dst_terms.is_file(), f"实际 {created}")
         check("返回值列出新建的两个文件",
-              set(created) == {dst, dst_terms}, f"实际 {created}")
+              set(created) == {dst, dst_terms},
+              f"created={created!r} 期望={[dst, dst_terms]!r}")
 
         dst.write_text("app:\n  log_level: DEBUG\n", encoding="utf-8")
         dst_terms.write_text("gate: 用户改过的星门\n", encoding="utf-8")
@@ -340,7 +348,8 @@ def test_frozen_paths() -> None:
 
         cfg = C.Config()
         check("打包模式 log_dir 落在 exe 旁边",
-              cfg.log_dir == exe_dir / "logs", f"实际 {cfg.log_dir}")
+              cfg.log_dir == exe_dir / "logs",
+              f"log_dir={cfg.log_dir!r} 期望={exe_dir / 'logs'!r}")
         check("log_dir 目录真的被创建", (exe_dir / "logs").is_dir())
 
         # ---------------- exe 放在只读位置 -> 兜底 ----------------
