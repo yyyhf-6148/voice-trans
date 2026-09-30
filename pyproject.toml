@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eve-voice-translator"
+version = "0.1.0"
+description = "实时音频翻译悬浮窗 — 抓取 Mumble/系统音频，识别并翻译为中文"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "numpy>=1.26,<2.2",
+    "scipy>=1.11",
+    "soundcard==0.4.3",
+    "PyYAML>=6.0",
+    "keyboard>=0.13.5",
+]
+
+[project.optional-dependencies]
+# 主动力链路：音频直入 → 中文文本出（流式，带服务端 VAD）
+livetranslate = ["dashscope>=1.25.6"]
+# 备选链路：本地 faster-whisper
+asr = [
+    "faster-whisper>=1.0.3",
+    "torch>=2.2,<2.6",
+    "torchaudio>=2.2,<2.6",
+]
+# 备选链路：云端 ASR（OpenAI 兼容）
+cloud-asr = ["httpx>=0.27", "h2>=4.0"]
+ui = ["PySide6>=6.6"]
+local-mt = ["transformers>=4.40", "sentencepiece>=0.2"]
+
+[tool.setuptools]
+packages = ["src", "src.audio", "src.asr", "src.tools", "src.ui"]

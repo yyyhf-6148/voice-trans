@@ -1,0 +1,38 @@
+# =========================================================
+#  打包专用依赖（CI / 本地构建 exe 用）
+# =========================================================
+#
+# 与 `requirements.txt` 的差别：**去掉了被 `trans.spec` 排除的重型依赖**。
+#
+# `trans.spec` 的 `excludes` 明确排除了 torch / torchaudio / faster-whisper /
+# ctranslate2 / transformers —— 因为本项目固定 `asr.provider = livetranslate`
+# （纯云端，音频直入→中文文本出），那套本地 ASR 运行期一次都不会 import。
+#
+# 实测确认（读 exe 的 PYZ 归档）：最终产物里 torch / faster_whisper /
+# ctranslate2 / transformers 模块数均为 **0**，装了也白装，只会让 CI 多下 2.5GB。
+#
+# 保留 httpx / h2：`src/asr/cloud_whisper.py` 的 `import httpx` 虽然写在函数内，
+# 但 PyInstaller 的静态分析会跟进，实测产物里 httpx(23) + httpcore(31) + h2(12)
+# 个模块确实进了包 —— 所以构建环境必须装。
+#
+# 用法:
+#   pip install -r requirements-build.txt
+#   python -m PyInstaller --noconfirm --clean trans.spec
+
+# ---- 打包工具 ----
+pyinstaller>=6.10
+
+# ---- 运行期必需 ----
+soundcard==0.4.3
+numpy>=1.26,<2.2
+scipy>=1.11
+PyYAML>=6.0
+PySide6>=6.6
+keyboard>=0.13.5
+
+# ---- 实时翻译（主链路）----
+dashscope>=1.25.6
+
+# ---- 云端 ASR（备选链路，代码在包里所以依赖也要在）----
+httpx>=0.27
+h2>=4.0

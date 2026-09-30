@@ -1,0 +1,60 @@
+name: CI
+
+# 每次 push / PR 跑一遍离线测试套件（不需要 API Key，不消耗额度）。
+# 打包与发布见 release.yml。
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 离线测试套件
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    env:
+      # 无显示器环境：Qt 走 offscreen 平台（悬浮窗/设置窗的构造测试靠它）
+      QT_QPA_PLATFORM: offscreen
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-build.txt
+
+      - name: 安装依赖
+        run: pip install -r requirements-build.txt
+
+      - name: 运行测试套件
+        shell: bash
+        run: |
+          set -u
+          fail=0
+          # 格式: 测试文件|额外参数（空表示无）
+          while IFS='|' read -r f args; do
+            [ -z "$f" ] && continue
+            echo "::group::$f $args"
+            python "tests/$f" $args || fail=1
+            echo "::endgroup::"
+          done <<'EOF'
+          test_core.py|
+          test_reconnect.py|
+          test_config_writer.py|
+          test_settings_coverage.py|
+          test_tray_settings.py|
+          test_overlay.py|
+          test_process_loopback.py|
+          test_livetranslate.py|--offline
+          EOF
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::有测试套件失败"
+          fi
+          exit $fail

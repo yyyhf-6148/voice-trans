@@ -1,0 +1,336 @@
+# =========================================================
+#  实时音频翻译 - 主配置
+# =========================================================
+
+app:
+  # 日志级别: DEBUG | INFO | WARNING | ERROR
+  log_level: INFO
+  # 日志目录
+  log_dir: logs
+  # 采样率（内部统一处理为 16k mono，勿改）
+  target_sample_rate: 16000
+
+# ---------------------------------------------------------
+#  音频采集
+# ---------------------------------------------------------
+audio:
+  # 采集后端:
+  #   process         = 只抓指定进程（默认，Mumble 专属，不掺游戏音效/音乐）
+  #   wasapi_loopback = 抓整路系统音频（扬声器回环，什么都收）
+  # 说明: process 需要 Windows 10 2004 (Build 19041) 及以上；
+  #       若启动时找不到目标进程，会自动降级为 wasapi_loopback 并告警。
+  backend: process
+
+  # 要捕获的进程名（backend=process 时生效，不含 .exe）
+  process_name: mumble
+
+  # 设备名关键字。留空 = 自动选默认扬声器对应的 loopback 设备
+  # 可通过 `python -m src.tools.list_devices` 查看可选设备
+  device_keyword: ""
+
+  # 采集分块大小（毫秒）。越小延迟越低，但 CPU 占用上升
+  block_ms: 32
+
+  # 进程级采集的 WASAPI 缓冲（毫秒），仅 backend=process 时生效
+  # 越小延迟越低；50ms 兼顾低延迟与抗抖动，不建议低于 20
+  process_buffer_ms: 50
+
+  # 采集回调队列上限（超过则丢弃最旧数据，防止内存膨胀）
+  max_queue_blocks: 256
+
+  # 自动增益：对采集到的音频做峰值归一化，提升 ASR 准确率
+  auto_gain: true
+  # 静音判定阈值（RMS），低于该值的音频块不送入 VAD
+  silence_rms_threshold: 0.0015
+
+# ---------------------------------------------------------
+#  语音活动检测 (VAD)
+# ---------------------------------------------------------
+vad:
+  # ⚠️ 当 asr.provider = livetranslate 时必须为 false！
+  #    该模型自带服务端 VAD，本地 VAD 会重复切句导致句子碎片化。
+  enabled: false
+  # silero VAD 判定为语音的概率阈值
+  threshold: 0.5
+  # 静音超过该毫秒数 = 一句话结束
+  min_silence_ms: 420
+  # 语音段短于该毫秒数则丢弃（多为噪声）
+  min_speech_ms: 250
+  # 语音段长于该毫秒数强制切分（防止长句无限累积）
+  max_speech_ms: 12000
+  # 语音段前保留的上下文（毫秒），避免吃掉首字
+  padding_before_ms: 200
+  # 半句触发：累计语音超过该毫秒数就先送一次识别（低延迟关键）
+  partial_trigger_ms: 1800
+
+# ---------------------------------------------------------
+#  语音识别 (ASR)
+# ---------------------------------------------------------
+asr:
+  # 后端: local | cloud | livetranslate
+  #
+  # ├─ livetranslate : 阿里云百炼 Qwen3.5-LiveTranslate（端到端语音翻译）
+  # │    音频直入 → 中文文本出，一次调用完成识别+翻译。
+  # │    走 WebSocket 长连接，自带服务端 VAD。
+  # │    ✅ 支持热词表，可强制 EVE 术语（gate→星门），这是它最大优势
+  # │    ✅ 输入 16k PCM mono，与现有采集管线完全对齐
+  # │    ⚠️ 启用它必须把下面 vad.enabled 设为 false（否则重复切句）
+  # │
+  # ├─ cloud : 云端 ASR（OpenAI 兼容）+ 独立翻译步骤（级联）
+  # │    延迟可预期、无本地 GPU 调度问题，但多一次网络往返
+  # │
+  # └─ local : 本地 faster-whisper
+  #     ⚠️ 本机（N卡 P106-100）实测受 GPU 空闲降频影响严重（2026-09-25）：
+  #        空闲 3-5 秒后从 P0/1506MHz 掉到 P8/607MHz，
+  #        识别延迟从 ~320ms 劣化到 ~900-1100ms。
+  #        软件保活/热身/nvidia-smi 锁频全部无效。
+  #        舰队语音间隔恰好 2-5 秒，每次都撞上这个开销。
+  provider: livetranslate
+
+  # 源语言。留空 = 自动检测（慢一些）。指定可提速
+  language: en
+
+  # 识别时的上下文提示词，专有名词写这里可显著提升准确率
+  initial_prompt: "EVE Online fleet combat. Common terms: gate, tackle, warp, aligned, cap, neut, logi, scout, cyno, MWD, AB, bubbles, grid, broadcast, hold, jump."
+
+  # beam search 宽度。1 = 贪心解码（最快，舰队场景推荐）
+  beam_size: 1
+
+  # 启用 whisper 内置 VAD 过滤（外部已有 VAD，一般关掉）
+  vad_filter: false
+
+  # ---------- 本地 faster-whisper ----------
+  local:
+    # 模型: tiny | base | small | medium | large-v3
+    #   实测：small 单句 0.40s（P106-100 / float32）
+    model: small
+
+    # 设备: auto | cuda | cpu
+    #   auto = 有 CUDA 自动用 CUDA，否则退 CPU
+    device: auto
+
+    # 计算精度: auto | float16 | float32 | int8_float16 | int8
+    #   auto 会按显卡架构自动选择：
+    #   Pascal 架构（CC<7，如 P106/P100）不支持 FP16，
+    #   CTranslate2 会直接报错，故 auto 会选 float32
+    compute_type: auto
+
+    # CPU 模式线程数
+    cpu_threads: 8
+
+    # 模型下载目录。留空 = 默认缓存位置
+    download_root: null
+
+    # GPU 保活：周期性提交极小计算试图阻止显卡空闲降频。
+    #   ⚠️ P106-100 实测无效（2026-09-25）：仍会在空闲 3-5s 后从
+    #   P0/1506MHz 掉到 P8/607MHz（320ms → 900ms）。
+    #   默认 false。除非你的显卡上确认有效，否则别开。
+    keep_alive: false
+    keep_alive_interval_s: 1.5
+
+  # ---------- 云端 ASR（默认方案）----------
+  cloud:
+    # 任何 OpenAI /v1/audio/transcriptions 兼容的服务
+    # 可选：
+    #   OpenAI 官方      https://api.openai.com/v1
+    #   硅基流动          https://api.siliconflow.cn/v1
+    #   自建 whisper 服务 http://127.0.0.1:8000/v1
+    base_url: "https://api.siliconflow.cn/v1"
+    # API Key 从该环境变量读取
+    api_key_env: "ASR_API_KEY"
+    # 模型名（各家不同）
+    #   OpenAI: whisper-1
+    #   硅基流动: FunAudioLLM/SenseVoiceSmall
+    model: "FunAudioLLM/SenseVoiceSmall"
+    timeout_s: 30
+    # 瞬时错误重试次数（网络抖动一次就丢一句话）
+    max_retries: 2
+    # 启动时提前建连，把握手开销移出首句路径
+    warmup: true
+
+  # ---------- 阿里云百炼 Qwen3.5-LiveTranslate（端到端实时翻译）----------
+  livetranslate:
+    enabled: true
+    # 百炼 API Key 环境变量名
+    #   获取: https://bailian.console.aliyun.com/
+    #   设置: set DASHSCOPE_API_KEY=sk-xxx
+    api_key_env: "DASHSCOPE_API_KEY"
+    model: qwen3.8-livetranslate-flash-realtime
+
+    # 服务端点。留空 = 默认通用端点（无需业务空间 ID）：
+    #   wss://dashscope.aliyuncs.com/api-ws/v1/realtime
+    # 若要用业务空间专属端点（官方称性能与稳定性更好），填：
+    #   url: "wss://你的WorkspaceId.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime"
+    #   workspace: "你的WorkspaceId"
+    url: null
+    workspace: null
+
+    # 目标语言（翻译成什么语言）
+    target_language: "zh"
+    # 源语言。留空 = 自动检测（更慢）；指定可提速
+    source_language: "en"
+
+    # 是否同时返回英文原文（双语字幕用）
+    with_original: true
+
+    # 服务端 VAD 静音判句时长（毫秒）
+    #   越小 = 越快触发翻译，但可能把句子切碎
+    #   越大 = 等得更久，但句子更完整
+    #   官方范围 200~6000，默认 1000；舰队场景建议 400~600
+    silence_duration_ms: 500
+
+    # 服务端 VAD 灵敏度，越低越容易把弱声音当语音（含背景噪声）
+    #   范围 -1.0 ~ 1.0，默认 0.2
+    vad_threshold: 0.2
+
+    # 音色（仅输出音频时生效；本配置只要文本，此项无影响）
+    voice: "Tina"
+
+    connect_timeout_s: 15
+
+    # 会话主动轮换间隔（分钟）。0 = 关闭（默认）。
+    # 到点主动换一条新连接，规避服务端长会话退化。
+    # 断线本身已由自动重连兜底（1~30s 退避）。
+    session_rotate_minutes: 0
+
+    # EVE 术语热词表 —— 已改为**外部文件引用**
+    #   完整词表在项目根的 `terms.yaml`（629 条，硬上限 1000），由
+    #   `src/tools/build_phrases.py` 从 EVE SDE `types.jsonl` 自动生成。
+    #
+    #   这里只放**临时覆盖/追加**的少量条目：
+    #   与 terms.yaml 合并时**内联优先**（同名以内联为准）。
+    #
+    #   为什么搬出去：629 条内联在 config.yaml 里时，设置界面的热词框要
+    #   一次渲染 629 行（那是按"几十条"设计的），既卡又容易误改。
+    #
+    #   ⚠️ 热词表匹配的是**服务端 ASR 输出的字面文本**（大小写不敏感，
+    #      2026-09-28 实测）。ASR 会把 Logi 听成 Logie、Cyno 听成 Sino ——
+    #      常见误听变体已列在 terms.yaml 里，遇到新的直接追加。
+    #   ⚠️ 改完必须重启程序，或托盘「重新连接」——热词表在建连时一次性下发。
+    phrases_file: terms.yaml
+    phrases: {}
+
+# ---------------------------------------------------------
+#  翻译
+# ---------------------------------------------------------
+translate:
+  # Provider: online | local | offline_dict
+  provider: online
+
+  online:
+    # 服务商: deepseek | openai_compatible
+    # DeepSeek 兼容 OpenAI 协议
+    base_url: "https://api.deepseek.com/v1"
+    # API Key 从环境变量读取，勿写死在此文件
+    api_key_env: "DEEPSEEK_API_KEY"
+    model: "deepseek-chat"
+    timeout_s: 8
+    # 舰队场景：要求直译、口语化、不要解释
+    system_prompt: |
+      You are a real-time subtitle translator for EVE Online fleet voice comms.
+      Translate the English speech into concise Simplified Chinese.
+      Rules:
+      - Output ONLY the translation, no explanations, no quotes, no pinyin.
+      - Keep EVE Online terminology in its common Chinese form (e.g. gate=星门, tackle=抓人, warp=跃迁, cap=电容, logi=后勤, scout=侦察, cyno=诱导).
+      - Preserve callsigns/names in original form.
+      - If the input is not meaningful speech, output nothing.
+    # 译文缓存大小（相同句子不重复请求）
+    cache_size: 512
+
+  local:
+    # 本地模型（provider=local 时生效）
+    model_name: "Helsinki-NLP/opus-mt-en-zh"
+    max_length: 256
+
+# ---------------------------------------------------------
+#  悬浮窗
+# ---------------------------------------------------------
+overlay:
+  enabled: true
+  # 初始不透明度 0.0 ~ 1.0
+  opacity: 0.3
+  # 位置：bottom_right | bottom_left | top_right | top_left | bottom_center
+  position: bottom_right
+  # 边距（像素）
+  margin_x: 24
+  margin_y: 80
+  # 窗口尺寸
+  width: 560
+  min_height: 120
+  max_height: 460
+  # 最多保留多少条历史
+  max_messages: 30
+  # 字号
+  font_size_translation: 18
+  font_size_original: 12
+  # 是否显示原文
+  show_original: true
+
+  # ---- P3 新增 ----
+  # 自动淡出（秒）：最后一条消息多久无新内容后开始降透明度，0=禁用
+  auto_fade_after_s: 0
+
+  # 启动时点击穿透（鼠标直接穿透到游戏，不挡操作）
+  #   ⚠️ 开启后无法用鼠标拖动窗口，需按 Ctrl+Alt+M 关掉才能拖
+  #   ⚠️ 开启后鼠标滚轮也一并穿透 → 无法翻看历史字幕
+  #   舰队场景建议：调好位置后改成 true；想翻历史时按 Ctrl+Alt+M 临时关掉
+  click_through: false
+
+  # 字幕保留时长（秒）。超过该时长且已定稿的条目会被移除
+  #   0 = 不按时间移除，只在条数超过 max_messages 时丢最旧的
+  #   舰队场景建议 20~40：能回看刚才的指令，又不会堆满屏幕
+  hold_seconds: 0
+
+  # 新条目自动滚到底部
+  #   true  = 在底部时跟随新消息；鼠标上滚翻历史则暂停跟随，
+  #           再滚回底部自动恢复（推荐）
+  #   false = 完全不动视口，只能手动滚
+  # 注：鼠标滚轮上滚可翻看历史，下方还有内容时右下角会提示条数；
+  #     但 click_through=true 时鼠标事件整体穿透，滚轮不生效
+  auto_scroll: true
+
+  # 配色（支持 #RGB / #RRGGBB / #AARRGGBB）
+  #   背景带 alpha（前两位十六进制）可以让底色比文字更透，观感更清爽
+  background: "#E6101216"
+  color_translation: "#FFFFFF"
+  color_original: "#9AA4B2"
+  color_error: "#F87171"
+  color_alert: "#FBBF24"
+
+  # 字体族。留空 = 自动挑（优先微软雅黑，保证中文不出方块）
+  font_family: ""
+
+  # 行间距（像素）
+  line_spacing: 4
+  # 单条最多显示字符数，0 = 不限制
+  max_chars_per_message: 300
+
+  # 说话人配色（阶段四启用，未来扩展用）
+  speaker_colors:
+    - "#7dd3fc"
+    - "#fca5a5"
+    - "#86efac"
+    - "#fcd34d"
+    - "#c4b5fd"
+    - "#f9a8d4"
+
+hotkeys:
+  # 全局快捷键（keyboard 库语法）
+  #   ✅ 不需要管理员权限
+  #   ✅ 不会吃掉按键，游戏照常收到（suppress=False）
+  toggle_visibility: "ctrl+alt+h"    # 显示/隐藏悬浮窗
+  opacity_up: "ctrl+alt+up"          # 提高不透明度
+  opacity_down: "ctrl+alt+down"      # 降低不透明度
+  toggle_click_through: "ctrl+alt+m" # 切换点击穿透（不挡游戏）
+  recenter: "ctrl+alt+r"             # 忘记拖到哪了：回到配置位置
+  quit: "ctrl+alt+q"                 # 退出程序
+
+# ---------------------------------------------------------
+#  系统托盘
+# ---------------------------------------------------------
+tray:
+  # 是否显示托盘图标。
+  #   托盘是**唯一的鼠标退出路径** —— 悬浮窗是无边框的，没有关闭按钮。
+  #   关掉后仍可用 Ctrl+Alt+Q 退出。
+  #   托盘菜单还提供「设置」「重新连接」「打开日志」「重启程序」。
+  enabled: true

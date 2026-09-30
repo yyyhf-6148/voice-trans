@@ -1,0 +1,26 @@
+# =========================================================
+#  换行符策略
+# =========================================================
+#
+# 为什么需要这个文件：`.bat` 用 LF 换行时 cmd.exe 会解析出错（本机踩过坑），
+# 而 `core.autocrlf` 是**每个克隆者自己的配置** —— 别人 clone 下来可能是 LF。
+# 写进仓库才能保证无论谁、在哪台机器 clone，拿到的手感都一致。
+
+# 默认：交给 git 自动判断文本/二进制
+* text=auto
+
+# 批处理脚本必须 CRLF（run.bat / build_exe.bat / setup.bat / check_audio.bat）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 项目配置约定 CRLF（config_writer 的行级手术按行处理，CRLF 是既定约定）
+# 注意：只匹配 .yaml —— .github/workflows/*.yml 保持 LF
+*.yaml text eol=crlf
+
+# 二进制资源不要做任何转换（否则图标/产物会被破坏）
+*.ico  binary
+*.png  binary
+*.exe  binary
+*.dll  binary
+*.pyd  binary
+*.wav  binary

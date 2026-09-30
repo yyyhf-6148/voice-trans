@@ -1,0 +1,71 @@
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# 工具缓存
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# AI 助手工作目录（项目记忆 / 一次性脚本 / 临时产物，属于本地，不入库）
+.workbuddy/
+
+# 测试产物
+test_audio.wav
+_e2e_test.wav
+_play.wav
+*.wav
+!native/**/*.wav
+
+# 预览图（本地调样式用，不入库；README 目前不引用任何图片）
+overlay_*.png
+settings_*.png
+tray_*.png
+
+# 日志
+logs/
+*.log
+
+# 本地配置与密钥
+.env
+.env.local
+api_keys.json
+secrets.yaml
+# 改动前的本地备份（config.yaml.bak3-20260929-001356 之类）
+*.bak
+*.bak[0-9]*
+config.yaml.bak*
+
+# 模型缓存
+models/
+*.bin
+*.onnx
+
+# EVE SDE 原始数据（147MB，超过 GitHub 单文件 100MB 硬上限）
+#   只在本地用来生成 terms.yaml：python -m src.tools.build_phrases
+#   重新生成后把 terms.yaml 提交即可，**不要**提交 types.jsonl
+types.jsonl
+*.jsonl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统
+Thumbs.db
+desktop.ini
+.DS_Store
