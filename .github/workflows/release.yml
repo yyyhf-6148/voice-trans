@@ -49,11 +49,10 @@ jobs:
       - name: 产物自检（密钥、内置资源、体积）
         run: python -m src.tools.verify_bundle "dist/${{ env.EXE_NAME }}"
 
-      # 软门禁：真跑一遍 exe（A~F 六阶段，含窗口模式 / 重启自身 / 设置窗口）。
-      # ⚠️ 这条在无头 CI 上可能因托盘 / 桌面会话差异误报，所以不阻断发布。
-      #    如果你确认 CI 上一直绿，把 continue-on-error 去掉即可变成硬门禁。
+      # 硬门禁：真跑一遍 exe（A~F 六阶段，含窗口模式 / 重启自身 / 设置窗口）。
+      # 已在 v0.1.0 的 CI 运行中实测通过（windows-latest 有桌面会话，Qt 托盘正常），
+      # 所以直接当门禁 —— 产物跑不起来就不该发布。
       - name: 冒烟测试（真跑 exe）
-        continue-on-error: true
         run: python -m src.tools.smoke_test_exe "dist/${{ env.EXE_NAME }}"
 
       - name: 计算 SHA256
